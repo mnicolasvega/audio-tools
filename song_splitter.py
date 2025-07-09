@@ -9,16 +9,18 @@ import subprocess
 
 
 load_dotenv()
-ALBUM_DIR = os.getenv('ALBUM_DIR')
-SONG_FILE_NAME = os.getenv('SONG_FILE_NAME')
-MODEL = os.getenv('MODEL')
 OVERWRITE_TRACKS = False
-BITRATE = "320k"
-CONFIG_VOLUME = {
-    'drums': 1.0,
-    'vocals': 0.5,
-    'bass': 0.5,
-    'other': 0.5,
+CONFIG = {
+    'path_album': os.getenv('ALBUM_DIR'),
+    'song_file': os.getenv('SONG_FILE_NAME'),
+    'bitrate': '320k',
+    'model': os.getenv('MODEL'),
+    'volume': {
+        'drums': 1.1,
+        'vocals': 0.3,
+        'bass': 0.3,
+        'other': 0.3,
+    }
 }
 
 
@@ -26,13 +28,14 @@ CONFIG_VOLUME = {
 def run_demucs(input_mp3: str) -> None:
     print("running demucs:")
     subprocess.run([
-        "python3", "-m", "demucs", "-n", MODEL, input_mp3
+        "python3", "-m", "demucs", "-n", CONFIG['model'], input_mp3
     ])
 
 
 
 def unify_tracks(input_dir: str, config: dict) -> None:
     mixed_track = None
+    song_name = Path(CONFIG['song_file']).stem
     tracks = {}
     db_label = ''
     for track_name in config.keys():
@@ -48,11 +51,11 @@ def unify_tracks(input_dir: str, config: dict) -> None:
         mixed_track = track \
             if mixed_track is None else \
             mixed_track.overlay(track)
-    output_file = f"{input_dir}/{track_name} {db_label}.mp3"
+    output_file = f"{input_dir}/{song_name} {db_label}.mp3"
     mixed_track.export(
         output_file,
         format = "mp3",
-        bitrate = BITRATE
+        bitrate = CONFIG['bitrate']
     )
     print(f"mix finished: '{output_file}'")
 
@@ -60,7 +63,7 @@ def unify_tracks(input_dir: str, config: dict) -> None:
 
 def get_demucs_output_dir(input_path: str) -> str:
     base_name = Path(input_path).stem
-    output_folder = os.path.join("separated", MODEL, base_name)
+    output_folder = os.path.join("separated", CONFIG['model'], base_name)
     if not os.path.exists(output_folder):
         os.makedirs(output_folder, exist_ok = True)
         print(f"error: demucs output folder not found: '{output_folder}'")
@@ -98,7 +101,8 @@ def split_song(input_file: str, output_dir: str) -> None:
     run_demucs(input_file)
     output_demucs = get_demucs_output_dir(input_file)
     convert_files(output_demucs, output_dir)
-    unify_tracks(output_dir, CONFIG_VOLUME)
+    volume = CONFIG['volume']
+    unify_tracks(output_dir, volume)
 
 
 
@@ -119,9 +123,12 @@ def split_album(album_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    if SONG_FILE_NAME is None:
-        split_album(ALBUM_DIR)
+    album_dir = CONFIG['path_album']
+    song_file = CONFIG['song_file']
+    if song_file is None:
+        split_album(album_dir)
     else:
-        source = f"{ALBUM_DIR}/{SONG_FILE_NAME}"
+        source = f"{album_dir}/{song_file}"
         song_name = Path(source).stem
-        split_song(source, f"{ALBUM_DIR}/tracks/{song_name}")
+        split_song(source, f"{album_dir}/tracks/{song_name}")
+    print(CONFIG)
