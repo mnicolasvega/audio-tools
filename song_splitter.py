@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from pathlib import Path
 from pydub import AudioSegment
+import math
 import os
 import os
 import subprocess
@@ -13,11 +14,11 @@ SONG_FILE_NAME = os.getenv('SONG_FILE_NAME')
 MODEL = os.getenv('MODEL')
 OVERWRITE_TRACKS = False
 BITRATE = "320k"
-VOLUME_DB = {
-    'drums': -6,
-    'vocals': -6,
-    'bass': -6,
-    'other': -6,
+CONFIG_VOLUME = {
+    'drums': 1.0,
+    'vocals': 0.5,
+    'bass': 0.5,
+    'other': 0.5,
 }
 
 
@@ -30,33 +31,25 @@ def run_demucs(input_mp3: str) -> None:
 
 
 
-def unify_tracks(input_dir: str, output_file: str, config: dict) -> None:
-    # load tracks
-    track_vocals = AudioSegment.from_mp3(f"{input_dir}/vocals.mp3")
-    track_drums = AudioSegment.from_mp3(f"{input_dir}/drums.mp3")
-    track_bass = AudioSegment.from_mp3(f"{input_dir}/bass.mp3")
-    track_other = AudioSegment.from_mp3(f"{input_dir}/other.mp3")
-
-    # normalize lenghts
-    min_len = min(len(track_vocals), len(track_drums), len(track_bass), len(track_other))
-    track_vocals = track_vocals[:min_len]
-    track_drums = track_drums[:min_len]
-    track_bass = track_bass[:min_len]
-    track_other = track_other[:min_len]
-
-    # adjust volume:
-    #  100% ( 0 dB)
-    #   50% (-6 dB)
-    track_drums = track_drums.apply_gain(config['drums'])
-    track_vocals = track_vocals.apply_gain(config['vocals'])
-    track_bass = track_bass.apply_gain(config['bass'])
-    track_other = track_other.apply_gain(config['other'])
-
-    track_mix = track_drums \
-        .overlay(track_vocals) \
-        .overlay(track_bass) \
-        .overlay(track_other)
-    track_mix.export(
+def unify_tracks(input_dir: str, config: dict) -> None:
+    mixed_track = None
+    tracks = {}
+    db_label = ''
+    for track_name in config.keys():
+        input_file = f"{input_dir}/{track_name}.mp3"
+        gain_percentage = config[track_name]
+        gain_dB = 20 * math.log10(gain_percentage)
+        db_str = f"%.1fdB" % (gain_dB)
+        db_formatted = db_str.replace(".", ",")
+        db_label = db_label + f" {track_name}_{db_formatted}"
+        track = AudioSegment.from_mp3(input_file)
+        track = track.apply_gain(gain_dB)
+        tracks[track_name] = track
+        mixed_track = track \
+            if mixed_track is None else \
+            mixed_track.overlay(track)
+    output_file = f"{input_dir}/{track_name} {db_label}.mp3"
+    mixed_track.export(
         output_file,
         format = "mp3",
         bitrate = BITRATE
@@ -105,7 +98,7 @@ def split_song(input_file: str, output_dir: str) -> None:
     run_demucs(input_file)
     output_demucs = get_demucs_output_dir(input_file)
     convert_files(output_demucs, output_dir)
-    unify_tracks(output_dir, f"{output_dir}/mixed.mp3", VOLUME_DB)
+    unify_tracks(output_dir, CONFIG_VOLUME)
 
 
 
@@ -126,8 +119,6 @@ def split_album(album_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    # input_mp3 = f"{ALBUM_DIR}/{SONG_FILE}"
-    # split_song(input_mp3)
     if SONG_FILE_NAME is None:
         split_album(ALBUM_DIR)
     else:
