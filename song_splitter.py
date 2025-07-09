@@ -35,6 +35,12 @@ def create_dir_if_needed(dir: str) -> None:
 
 
 
+def notify(title: str, content: str) -> None:
+    print(f"  {title}")
+    print(f"    {content}")
+
+
+
 def get_demucs_output_dir(input_path: str) -> str:
     base_name = Path(input_path).stem
     output_folder = os.path.join("separated", CONFIG['model'], base_name)
@@ -56,12 +62,12 @@ def has_to_run_demucs(output_dir: str) -> bool:
 
 def run_demucs(input_mp3: str, output_dir: str) -> None:
     if has_to_run_demucs(output_dir):
-        print("running demucs:")
+        notify("demucs", f"splitting track: '{input_mp3}'")
         subprocess.run([
             "python3", "-m", "demucs", "-n", CONFIG['model'], input_mp3
         ])
     else:
-        print(f"skipping demucs: .wav files already exist in '{output_dir}'")
+        notify("demucs", f"skipping: .wav files already exist in '{output_dir}'")
 
 
 
@@ -85,14 +91,14 @@ def merge_tracks(input_dir: str, song_name: str, config: dict) -> None:
             mixed_track.overlay(track)
     output_file = f"{input_dir}/{song_name} {db_label}.mp3"
     if OVERWRITE_MIX or not os.path.exists(output_file):
+        notify("mix", f"merging tracks into: '{output_file}'")
         mixed_track.export(
             output_file,
             format = "mp3",
             bitrate = CONFIG['bitrate']
         )
-        print(f"mixed into: '{output_file}'")
     else:
-        print(f"skipping mix: file already exist '{output_file}'")
+        notify("mix", f"skipping: merged file already exist '{output_file}'")
 
 
 
@@ -100,11 +106,11 @@ def convert_file(input_wav_file: str, output_dir: str) -> None:
     track_name = Path(input_wav_file).stem
     mp3_path = f"{output_dir}/{track_name}.mp3"
     if OVERWRITE_TRACKS or not os.path.exists(mp3_path):
-        print(f"converting to mp3: '{input_wav_file}'")
+        notify("conversion", f"converting to mp3: '{input_wav_file}'")
         audio = AudioSegment.from_wav(input_wav_file)
         audio.export(mp3_path, format = "mp3")
     else:
-        print(f"skipping: .mp3 already exists '{mp3_path}'")
+        notify("conversion", f"skipping: .mp3 already exists '{mp3_path}'")
 
 
 
