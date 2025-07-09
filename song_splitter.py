@@ -13,6 +13,7 @@ load_dotenv()
 OVERWRITE_TRACKS = False
 OVERWRITE_MIX = False
 CONFIG_DISPLAY_AT_END = True
+USE_DB_IN_OUTPUT = False
 CONFIG = {
     'path_album': os.getenv('ALBUM_DIR'),
     'song_file': os.getenv('SONG_FILE_NAME'),
@@ -20,9 +21,9 @@ CONFIG = {
     'model': os.getenv('MODEL'),
     'volume': {
         'drums': 1.0,
-        'vocals': 0.3,
-        'bass': 0.3,
-        'other': 0.3,
+        'vocals': 0.15,
+        'bass': 0.15,
+        'other': 0.15,
     }
 }
 
@@ -31,7 +32,7 @@ CONFIG = {
 def create_dir_if_needed(dir: str) -> None:
     if not os.path.exists(dir):
         os.makedirs(dir, exist_ok = True)
-        print(f"created dir: '{dir}'")
+        print(f"    created dir: '{dir}'")
 
 
 
@@ -71,25 +72,52 @@ def run_demucs(input_mp3: str, output_dir: str) -> None:
 
 
 
+def format_dB(dB: float, track_name: str, carry: str) -> str:
+    str = f"%.1fdB" % (dB)
+    formatted = str.replace(".", ",")
+    label = carry + f" {track_name}_{formatted}"
+    return label
+
+
+
+def format_percent(percentage: float, track_name: str, carry: str) -> str:
+    str = f"%.2f" % (percentage)
+    formatted = str.replace(".", ",")
+    label = carry + f" {track_name}_{formatted}"
+    return label
+
+
+
+def get_formatted_gain(config: dict) -> str:
+    label_db = ''
+    label_percent = ''
+    for track_name in config.keys():
+        gain_percent = config[track_name]
+        gain_dB = 20 * math.log10(gain_percent)
+        label_db = format_dB(gain_dB, track_name, label_db)
+        label_percent = format_percent(gain_percent, track_name, label_percent)
+    return label_db \
+        if USE_DB_IN_OUTPUT else \
+        label_percent
+
+
+
 def merge_tracks(input_dir: str, song_name: str, config: dict) -> None:
     mixed_track = None
     song_name = Path(song_name).stem
     tracks = {}
-    db_label = ''
     for track_name in config.keys():
         input_file = f"{input_dir}/{track_name}.mp3"
-        gain_percentage = config[track_name]
-        gain_dB = 20 * math.log10(gain_percentage)
-        db_str = f"%.1fdB" % (gain_dB)
-        db_formatted = db_str.replace(".", ",")
-        db_label = db_label + f" {track_name}_{db_formatted}"
+        gain_percent = config[track_name]
+        gain_dB = 20 * math.log10(gain_percent)
         track = AudioSegment.from_mp3(input_file)
         track = track.apply_gain(gain_dB)
         tracks[track_name] = track
         mixed_track = track \
             if mixed_track is None else \
             mixed_track.overlay(track)
-    output_file = f"{input_dir}/{song_name} {db_label}.mp3"
+    volume_gain_label = get_formatted_gain(config)
+    output_file = f"{input_dir}/{song_name} {volume_gain_label}.mp3"
     if OVERWRITE_MIX or not os.path.exists(output_file):
         notify("mix", f"merging tracks into: '{output_file}'")
         mixed_track.export(
