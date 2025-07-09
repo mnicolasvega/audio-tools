@@ -16,12 +16,27 @@ CONFIG = {
     'bitrate': '320k',
     'model': os.getenv('MODEL'),
     'volume': {
-        'drums': 1.1,
+        'drums': 1.0,
         'vocals': 0.3,
         'bass': 0.3,
         'other': 0.3,
     }
 }
+
+
+
+def create_dir_if_needed(dir: str) -> None:
+    if not os.path.exists(dir):
+        os.makedirs(dir, exist_ok = True)
+        print(f"created dir: '{dir}'")
+
+
+
+def get_demucs_output_dir(input_path: str) -> str:
+    base_name = Path(input_path).stem
+    output_folder = os.path.join("separated", CONFIG['model'], base_name)
+    create_dir_if_needed(output_folder)
+    return output_folder
 
 
 
@@ -33,9 +48,9 @@ def run_demucs(input_mp3: str) -> None:
 
 
 
-def unify_tracks(input_dir: str, config: dict) -> None:
+def unify_tracks(input_dir: str, song_name: str, config: dict) -> None:
     mixed_track = None
-    song_name = Path(CONFIG['song_file']).stem
+    song_name = Path(song_name).stem
     tracks = {}
     db_label = ''
     for track_name in config.keys():
@@ -61,26 +76,15 @@ def unify_tracks(input_dir: str, config: dict) -> None:
 
 
 
-def get_demucs_output_dir(input_path: str) -> str:
-    base_name = Path(input_path).stem
-    output_folder = os.path.join("separated", CONFIG['model'], base_name)
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder, exist_ok = True)
-        print(f"error: demucs output folder not found: '{output_folder}'")
-        print( "  -> creating it")
-    return output_folder
-
-
-
 def convert_file(input_wav_file: str, output_dir: str) -> None:
     track_name = Path(input_wav_file).stem
     mp3_path = f"{output_dir}/{track_name}.mp3"
-    if not OVERWRITE_TRACKS and os.path.exists(mp3_path):
+    if OVERWRITE_TRACKS or not os.path.exists(mp3_path):
+        print(f"converting to mp3: '{input_wav_file}'")
+        audio = AudioSegment.from_wav(input_wav_file)
+        audio.export(mp3_path, format = "mp3")
+    else:
         print(f"skipping: .mp3 already exists '{mp3_path}'")
-        return
-    print(f"converting to mp3: '{input_wav_file}'")
-    audio = AudioSegment.from_wav(input_wav_file)
-    audio.export(mp3_path, format = "mp3")
 
 
 
@@ -96,13 +100,13 @@ def convert_files(input_dir: str, output_dir: str) -> None:
 
 def split_song(input_file: str, output_dir: str) -> None:
     print(f"input song: '{input_file}'")
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir, exist_ok = True)
+    create_dir_if_needed(output_dir)
     run_demucs(input_file)
     output_demucs = get_demucs_output_dir(input_file)
     convert_files(output_demucs, output_dir)
     volume = CONFIG['volume']
-    unify_tracks(output_dir, volume)
+    song_name = Path(input_file).stem
+    unify_tracks(output_dir, song_name, volume)
 
 
 
@@ -114,8 +118,7 @@ def split_album(album_dir: str) -> None:
     for song_file in song_files:
         song_name = Path(song_file).stem
         output_dir = f"{album_dir}/tracks/{song_name}"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir, exist_ok = True)
+        create_dir_if_needed(output_dir)
         song_file = f"{album_dir}/{song_file}"
         split_song(song_file, output_dir)
 
