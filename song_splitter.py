@@ -1,6 +1,7 @@
 from dotenv import load_dotenv
 from pathlib import Path
 from pydub import AudioSegment
+import json
 import math
 import os
 import os
@@ -10,6 +11,8 @@ import subprocess
 
 load_dotenv()
 OVERWRITE_TRACKS = False
+OVERWRITE_MIX = False
+CONFIG_DISPLAY_AT_END = True
 CONFIG = {
     'path_album': os.getenv('ALBUM_DIR'),
     'song_file': os.getenv('SONG_FILE_NAME'),
@@ -40,15 +43,29 @@ def get_demucs_output_dir(input_path: str) -> str:
 
 
 
-def run_demucs(input_mp3: str) -> None:
-    print("running demucs:")
-    subprocess.run([
-        "python3", "-m", "demucs", "-n", CONFIG['model'], input_mp3
-    ])
+def has_to_run_demucs(output_dir: str) -> bool:
+    wav_files = sorted(
+        f for f in os.listdir(output_dir) if f.endswith(".wav")
+    )
+    expected_track_names = CONFIG['volume'].keys()
+    count_expected = len(expected_track_names)
+    count_wavs = len(wav_files)
+    return not count_expected == count_wavs
 
 
 
-def unify_tracks(input_dir: str, song_name: str, config: dict) -> None:
+def run_demucs(input_mp3: str, output_dir: str) -> None:
+    if has_to_run_demucs(output_dir):
+        print("running demucs:")
+        subprocess.run([
+            "python3", "-m", "demucs", "-n", CONFIG['model'], input_mp3
+        ])
+    else:
+        print(f"skipping demucs: .wav files already exist in '{output_dir}'")
+
+
+
+def merge_tracks(input_dir: str, song_name: str, config: dict) -> None:
     mixed_track = None
     song_name = Path(song_name).stem
     tracks = {}
@@ -67,12 +84,15 @@ def unify_tracks(input_dir: str, song_name: str, config: dict) -> None:
             if mixed_track is None else \
             mixed_track.overlay(track)
     output_file = f"{input_dir}/{song_name} {db_label}.mp3"
-    mixed_track.export(
-        output_file,
-        format = "mp3",
-        bitrate = CONFIG['bitrate']
-    )
-    print(f"mix finished: '{output_file}'")
+    if OVERWRITE_MIX or not os.path.exists(output_file):
+        mixed_track.export(
+            output_file,
+            format = "mp3",
+            bitrate = CONFIG['bitrate']
+        )
+        print(f"mixed into: '{output_file}'")
+    else:
+        print(f"skipping mix: file already exist '{output_file}'")
 
 
 
@@ -101,12 +121,12 @@ def convert_files(input_dir: str, output_dir: str) -> None:
 def split_song(input_file: str, output_dir: str) -> None:
     print(f"input song: '{input_file}'")
     create_dir_if_needed(output_dir)
-    run_demucs(input_file)
-    output_demucs = get_demucs_output_dir(input_file)
-    convert_files(output_demucs, output_dir)
+    demucs_output_dir = get_demucs_output_dir(input_file)
+    run_demucs(input_file, demucs_output_dir)
+    convert_files(demucs_output_dir, output_dir)
     volume = CONFIG['volume']
     song_name = Path(input_file).stem
-    unify_tracks(output_dir, song_name, volume)
+    merge_tracks(output_dir, song_name, volume)
 
 
 
@@ -124,6 +144,15 @@ def split_album(album_dir: str) -> None:
 
 
 
+def display_config() -> None:
+    formatted_json = json.dumps(
+        CONFIG,
+        indent = 4,
+        ensure_ascii = False
+    )
+    print(formatted_json)
+
+
 
 if __name__ == "__main__":
     album_dir = CONFIG['path_album']
@@ -134,4 +163,5 @@ if __name__ == "__main__":
         source = f"{album_dir}/{song_file}"
         song_name = Path(source).stem
         split_song(source, f"{album_dir}/tracks/{song_name}")
-    print(CONFIG)
+    if CONFIG_DISPLAY_AT_END:
+        display_config()
