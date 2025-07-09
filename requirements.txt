@@ -1,3 +1,4 @@
-pydub
 demucs
 pathlib
+pydub
+whisper

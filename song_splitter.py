@@ -6,6 +6,7 @@ import math
 import os
 import os
 import subprocess
+import whisper
 
 
 
@@ -27,6 +28,10 @@ CONFIG = {
     }
 }
 
+TRANSCRIBE_ENABLED = True
+TRANSCRIBE_MODEL = "large-v3"
+TRANSCRIBE_LANGUAGE = "en"
+
 
 
 def create_dir_if_needed(dir: str) -> None:
@@ -39,6 +44,28 @@ def create_dir_if_needed(dir: str) -> None:
 def notify(title: str, content: str) -> None:
     print(f"  {title}")
     print(f"    {content}")
+
+
+
+def transcribe(transcription: dict) -> str:
+    subtitles = ""
+    for i, segment in enumerate(transcription['segments']):
+        start = segment['start']
+        end = segment['end']
+        text = segment['text']
+        time_start = convert_to_time(start)
+        time_end = convert_to_time(end)
+        subtitles += f"{i+1}\n{time_start} --> {time_end}\n{text}\n\n"
+    return subtitles
+
+
+
+def convert_to_time(segundo: int) -> str:
+    hours = int(segundo // 3600)
+    minutes = int((segundo % 3600) // 60)
+    seconds = int(segundo % 60)
+    milliseconds = int((segundo % 1) * 1000)
+    return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
 
@@ -58,6 +85,27 @@ def has_to_run_demucs(output_dir: str) -> bool:
     count_expected = len(expected_track_names)
     count_wavs = len(wav_files)
     return not count_expected == count_wavs
+
+
+
+def get_model() -> whisper.model.Whisper:
+    notify("whisper", f"loading model: '{TRANSCRIBE_MODEL}'")
+    model = whisper.load_model(TRANSCRIBE_MODEL, device = "cpu")
+    return model
+
+
+
+def run_whisper(model: whisper.model.Whisper, path: str, file_srt: str) -> None:
+    notify("whisper", f"transcribing: '{path}' (language: {TRANSCRIBE_LANGUAGE})")
+    result = model.transcribe(
+        path,
+        task = "translate",
+        language = TRANSCRIBE_LANGUAGE
+    )
+    notify("whisper", f"generating .srt: '{file_srt}'")
+    srt_content = transcribe(result)
+    with open(file_srt, "w", encoding = "utf-8") as srt_file:
+        srt_file.write(srt_content)
 
 
 
@@ -102,16 +150,22 @@ def get_formatted_gain(config: dict) -> str:
 
 
 
+def get_track(input_dir: str, track_name: str, config: dict) -> AudioSegment:
+    input_file = f"{input_dir}/{track_name}.mp3"
+    gain_percent = config[track_name]
+    gain_dB = 20 * math.log10(gain_percent)
+    track = AudioSegment.from_mp3(input_file)
+    track = track.apply_gain(gain_dB)
+    return track
+
+
+
 def merge_tracks(input_dir: str, song_name: str, config: dict) -> None:
     mixed_track = None
     song_name = Path(song_name).stem
     tracks = {}
     for track_name in config.keys():
-        input_file = f"{input_dir}/{track_name}.mp3"
-        gain_percent = config[track_name]
-        gain_dB = 20 * math.log10(gain_percent)
-        track = AudioSegment.from_mp3(input_file)
-        track = track.apply_gain(gain_dB)
+        track = get_track(input_dir, track_name, config)
         tracks[track_name] = track
         mixed_track = track \
             if mixed_track is None else \
@@ -161,6 +215,9 @@ def split_song(input_file: str, output_dir: str) -> None:
     volume = CONFIG['volume']
     song_name = Path(input_file).stem
     merge_tracks(output_dir, song_name, volume)
+    if TRANSCRIBE_ENABLED:
+        model = get_model()
+        run_whisper(model, f"{output_dir}/vocals.mp3", f"{output_dir}/vocals.srt")
 
 
 
