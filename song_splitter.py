@@ -9,7 +9,7 @@ import subprocess
 
 load_dotenv()
 ALBUM_DIR = os.getenv('ALBUM_DIR')
-SONG_FILE = os.getenv('SONG_FILE')
+SONG_FILE_NAME = os.getenv('SONG_FILE_NAME')
 MODEL = os.getenv('MODEL')
 BITRATE = "320k"
 VOLUME_DB = {
@@ -99,6 +99,8 @@ def convert_files(input_dir: str, output_dir: str) -> None:
 
 def split_song(input_file: str, output_dir: str) -> None:
     print(f"input song: '{input_file}'")
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok = True)
     run_demucs(input_file)
     output_demucs = get_demucs_output_dir(input_file)
     convert_files(output_demucs, output_dir)
@@ -125,4 +127,9 @@ def split_album(album_dir: str) -> None:
 if __name__ == "__main__":
     # input_mp3 = f"{ALBUM_DIR}/{SONG_FILE}"
     # split_song(input_mp3)
-    split_album(ALBUM_DIR)
+    if SONG_FILE_NAME is None:
+        split_album(ALBUM_DIR)
+    else:
+        source = f"{ALBUM_DIR}/{SONG_FILE_NAME}"
+        song_name = Path(source).stem
+        split_song(source, f"{ALBUM_DIR}/tracks/{song_name}")
