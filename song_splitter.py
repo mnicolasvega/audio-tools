@@ -11,6 +11,7 @@ load_dotenv()
 ALBUM_DIR = os.getenv('ALBUM_DIR')
 SONG_FILE_NAME = os.getenv('SONG_FILE_NAME')
 MODEL = os.getenv('MODEL')
+OVERWRITE_TRACKS = False
 BITRATE = "320k"
 VOLUME_DB = {
     'drums': -6,
@@ -76,12 +77,9 @@ def get_demucs_output_dir(input_path: str) -> str:
 
 
 def convert_file(input_wav_file: str, output_dir: str) -> None:
-    if not input_wav_file.endswith(".wav"):
-        print(f"skipping: .wav not found '{input_wav_file}'")
-        return
     track_name = Path(input_wav_file).stem
     mp3_path = f"{output_dir}/{track_name}.mp3"
-    if os.path.exists(mp3_path):
+    if not OVERWRITE_TRACKS and os.path.exists(mp3_path):
         print(f"skipping: .mp3 already exists '{mp3_path}'")
         return
     print(f"converting to mp3: '{input_wav_file}'")
@@ -91,7 +89,10 @@ def convert_file(input_wav_file: str, output_dir: str) -> None:
 
 
 def convert_files(input_dir: str, output_dir: str) -> None:
-    for input_file_name in os.listdir(input_dir):
+    input_files = sorted(
+        f for f in os.listdir(input_dir) if f.endswith(".wav")
+    )
+    for input_file_name in input_files:
         input_file = f"{input_dir}/{input_file_name}"
         convert_file(input_file, output_dir)
 
